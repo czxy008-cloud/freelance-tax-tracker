@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="shieldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#14b8a6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0d9488;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="calculatorGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#f0fdfa;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <path d="M32 4L10 12v20c0 13.25 9.75 24.25 22 28 12.25-3.75 22-14.75 22-28V12L32 4z" fill="url(#shieldGradient)"/>
+  <path d="M32 10L16 16v16c0 10.5 8 19.25 16 22 8-2.75 16-11.5 16-22V16L32 10z" fill="#5eead4" opacity="0.3"/>
+  <rect x="22" y="22" width="20" height="26" rx="3" fill="url(#calculatorGradient)"/>
+  <rect x="25" y="26" width="14" height="6" rx="1.5" fill="#0f766e"/>
+  <rect x="25" y="35" width="3" height="3" rx="0.5" fill="#14b8a6"/>
+  <rect x="30" y="35" width="3" height="3" rx="0.5" fill="#14b8a6"/>
+  <rect x="35" y="35" width="3" height="3" rx="0.5" fill="#14b8a6"/>
+  <rect x="25" y="40" width="3" height="3" rx="0.5" fill="#14b8a6"/>
+  <rect x="30" y="40" width="3" height="3" rx="0.5" fill="#14b8a6"/>
+  <rect x="35" y="40" width="3" height="5" rx="0.5" fill="#f59e0b"/>
+  <rect x="25" y="45" width="3" height="3" rx="0.5" fill="#14b8a6"/>
+  <rect x="30" y="45" width="3" height="3" rx="0.5" fill="#14b8a6"/>
+</svg>
