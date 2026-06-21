@@ -10,6 +10,7 @@ export const useIncomeStore = defineStore('income', {
       monthly: [],
       byCategory: []
     },
+    totalCount: 0,
     loading: false
   }),
 
@@ -32,11 +33,21 @@ export const useIncomeStore = defineStore('income', {
   },
 
   actions: {
+    _normalize(item) {
+      if (!item) return item
+      return {
+        ...item,
+        category: item.category_name || item.category || item.category_id
+      }
+    },
+
     async fetchIncomes(params) {
       this.loading = true
       try {
         const data = await incomeApi.list(params)
-        this.incomes = data || []
+        const rawList = (data && data.items) ? data.items : (data || [])
+        this.incomes = rawList.map(item => this._normalize(item))
+        this.totalCount = (data && data.total) ? data.total : this.incomes.length
         return this.incomes
       } catch (error) {
         console.error('获取收入列表失败:', error)
@@ -50,7 +61,7 @@ export const useIncomeStore = defineStore('income', {
       try {
         const result = await incomeApi.create(data)
         if (result) {
-          this.incomes.unshift(result)
+          this.incomes.unshift(this._normalize(result))
         }
         return result
       } catch (error) {
@@ -64,7 +75,7 @@ export const useIncomeStore = defineStore('income', {
         const result = await incomeApi.update(id, data)
         const index = this.incomes.findIndex((item) => item.id === id)
         if (index !== -1 && result) {
-          this.incomes[index] = result
+          this.incomes[index] = this._normalize(result)
         }
         return result
       } catch (error) {
@@ -88,7 +99,13 @@ export const useIncomeStore = defineStore('income', {
       this.loading = true
       try {
         const data = await incomeApi.stats(params)
-        this.stats = data || { total: 0, monthly: [], byCategory: [] }
+        this.stats = {
+          total: data?.totalIncome || 0,
+          monthly: (data?.byMonth || []).map(m => ({ month: m.month, amount: m.total })),
+          byCategory: (data?.byCategory || []).map(c => ({ 
+            id: c.id, name: c.name, color: c.color, value: c.total 
+          }))
+        }
         return this.stats
       } catch (error) {
         console.error('获取收入统计失败:', error)

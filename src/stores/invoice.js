@@ -28,7 +28,7 @@ export const useInvoiceStore = defineStore('invoice', {
       this.loading = true
       try {
         const data = await invoiceApi.list(params)
-        this.invoices = data || []
+        this.invoices = (data && data.items) ? data.items : (data || [])
         return this.invoices
       } catch (error) {
         console.error('获取发票列表失败:', error)

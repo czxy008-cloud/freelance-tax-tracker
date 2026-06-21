@@ -191,13 +191,17 @@ function getDb() {
 }
 
 function createIncome(data) {
+  const categoryId = data.category_id !== undefined 
+    ? data.category_id 
+    : (data.category !== undefined ? data.category : null);
+
   const stmt = db.prepare(
     'INSERT INTO incomes (amount, date, category_id, payer, note) VALUES (?, ?, ?, ?, ?)'
   );
   stmt.run(
     data.amount,
     data.date,
-    data.category_id || null,
+    categoryId,
     data.payer || '',
     data.note || ''
   );
@@ -255,6 +259,11 @@ function listIncomes(params = {}) {
 }
 
 function updateIncome(id, data) {
+  if (data.category !== undefined && data.category_id === undefined) {
+    data.category_id = data.category;
+    delete data.category;
+  }
+
   const fields = [];
   const args = [];
   const allowed = ['amount', 'date', 'category_id', 'payer', 'note'];
@@ -334,9 +343,18 @@ function listIncomeCategories() {
 }
 
 function getTaxRates(region = 'default') {
-  return db.prepare(
+  const rows = db.prepare(
     'SELECT * FROM tax_rates WHERE region = ? ORDER BY level ASC'
   ).all(region);
+  return rows.map(r => ({
+    id: r.id,
+    region: r.region,
+    min: r.min_amount,
+    max: r.max_amount,
+    rate: r.rate,
+    deduction: r.quick_deduction || 0,
+    level: r.level
+  }));
 }
 
 function saveTaxRates(region, rates) {
@@ -348,10 +366,10 @@ function saveTaxRates(region, rates) {
     const r = rates[i];
     insert.run(
       region,
-      r.min_amount,
-      r.max_amount,
+      r.min !== undefined ? r.min : r.min_amount,
+      r.max !== undefined ? r.max : r.max_amount,
       r.rate,
-      r.quick_deduction || 0,
+      (r.deduction !== undefined ? r.deduction : r.quick_deduction) || 0,
       i + 1
     );
   }
