@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { dialog } = require('electron');
 const Papa = require('papaparse');
-const { getInvoicesDir, getDataDir, getDatabasePath, getDb } = require('./database');
+const { getInvoicesDir, getDataDir, getDatabasePath, getDb, prepare } = require('./database');
 
 function ensureDir(dirPath) {
   if (!fs.existsSync(dirPath)) {
@@ -73,16 +73,14 @@ function getFileType(filePath) {
 }
 
 async function exportData(exportPath) {
-  const db = getDb();
-
   const tables = {
-    income_categories: db.prepare('SELECT * FROM income_categories').all(),
-    incomes: db.prepare('SELECT * FROM incomes').all(),
-    tax_rates: db.prepare('SELECT * FROM tax_rates').all(),
-    deductions: db.prepare('SELECT * FROM deductions').all(),
-    invoice_categories: db.prepare('SELECT * FROM invoice_categories').all(),
-    invoices: db.prepare('SELECT * FROM invoices').all(),
-    settings: db.prepare('SELECT * FROM settings').all()
+    income_categories: prepare('SELECT * FROM income_categories').all(),
+    incomes: prepare('SELECT * FROM incomes').all(),
+    tax_rates: prepare('SELECT * FROM tax_rates').all(),
+    deductions: prepare('SELECT * FROM deductions').all(),
+    invoice_categories: prepare('SELECT * FROM invoice_categories').all(),
+    invoices: prepare('SELECT * FROM invoices').all(),
+    settings: prepare('SELECT * FROM settings').all()
   };
 
   const exportData = {

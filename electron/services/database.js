@@ -34,6 +34,48 @@ function saveDatabase() {
   fs.writeFileSync(getDbPath(), buffer);
 }
 
+function normalizeParams(params) {
+  if (params === undefined || params === null) return [];
+  if (!Array.isArray(params)) return [params];
+  return params;
+}
+
+function prepare(sql) {
+  const stmt = db.prepare(sql);
+  return {
+    run(...params) {
+      const args = normalizeParams(params.length === 1 ? params[0] : params);
+      stmt.bind(args);
+      stmt.step();
+      stmt.freemem();
+      return true;
+    },
+    get(...params) {
+      const args = normalizeParams(params.length === 1 ? params[0] : params);
+      stmt.reset();
+      stmt.bind(args);
+      if (stmt.step()) {
+        const row = stmt.getAsObject();
+        stmt.freemem();
+        return row;
+      }
+      stmt.freemem();
+      return undefined;
+    },
+    all(...params) {
+      const args = normalizeParams(params.length === 1 ? params[0] : params);
+      stmt.reset();
+      stmt.bind(args);
+      const rows = [];
+      while (stmt.step()) {
+        rows.push(stmt.getAsObject());
+      }
+      stmt.freemem();
+      return rows;
+    }
+  };
+}
+
 async function initDatabase() {
   getInvoicesDir();
   if (!SQL) {
@@ -126,7 +168,7 @@ function createTables() {
 }
 
 function seedInitialData() {
-  const insertCategory = db.prepare(
+  const insertCategory = prepare(
     'INSERT OR IGNORE INTO income_categories (name, keywords, color) VALUES (?, ?, ?)'
   );
   const categories = [
@@ -138,18 +180,18 @@ function seedInitialData() {
     ['其他收入', '其他,other', '#6B7280']
   ];
   for (const cat of categories) {
-    insertCategory.run(...cat);
+    insertCategory.run(cat);
   }
 
-  const insertInvoiceCategory = db.prepare(
+  const insertInvoiceCategory = prepare(
     'INSERT OR IGNORE INTO invoice_categories (name) VALUES (?)'
   );
   const invoiceCategories = ['办公用品', '差旅费', '餐饮费', '通讯费', '其他'];
   for (const cat of invoiceCategories) {
-    insertInvoiceCategory.run(cat);
+    insertInvoiceCategory.run([cat]);
   }
 
-  const insertSetting = db.prepare(
+  const insertSetting = prepare(
     'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)'
   );
   const settings = [
@@ -160,12 +202,12 @@ function seedInitialData() {
     ['social_insurance_rate', '0.105']
   ];
   for (const set of settings) {
-    insertSetting.run(...set);
+    insertSetting.run(set);
   }
 
-  const taxCount = db.prepare('SELECT COUNT(*) as count FROM tax_rates WHERE region = ?').get('default');
+  const taxCount = prepare('SELECT COUNT(*) as count FROM tax_rates WHERE region = ?').get('default');
   if (taxCount.count === 0) {
-    const insertTaxRate = db.prepare(
+    const insertTaxRate = prepare(
       'INSERT INTO tax_rates (region, min_amount, max_amount, rate, quick_deduction, level) VALUES (?, ?, ?, ?, ?, ?)'
     );
     const taxRates = [
@@ -178,7 +220,7 @@ function seedInitialData() {
       ['default', 960000, null, 0.45, 181920, 7]
     ];
     for (const rate of taxRates) {
-      insertTaxRate.run(...rate);
+      insertTaxRate.run(rate);
     }
   }
 }
@@ -195,27 +237,27 @@ function createIncome(data) {
     ? data.category_id 
     : (data.category !== undefined ? data.category : null);
 
-  const stmt = db.prepare(
+  const stmt = prepare(
     'INSERT INTO incomes (amount, date, category_id, payer, note) VALUES (?, ?, ?, ?, ?)'
   );
-  stmt.run(
+  stmt.run([
     data.amount,
     data.date,
     categoryId,
     data.payer || '',
     data.note || ''
-  );
+  ]);
   const lastId = db.exec('SELECT last_insert_rowid() as id')[0].values[0][0];
   saveDatabase();
   return getIncomeById(lastId);
 }
 
 function getIncomeById(id) {
-  return db.prepare(
+  return prepare(
     `SELECT i.*, c.name as category_name, c.color as category_color
      FROM incomes i LEFT JOIN income_categories c ON i.category_id = c.id
      WHERE i.id = ?`
-  ).get(id);
+  ).get([id]);
 }
 
 function listIncomes(params = {}) {
@@ -243,17 +285,17 @@ function listIncomes(params = {}) {
   const whereSql = where.length > 0 ? 'WHERE ' + where.join(' AND ') : '';
   const offset = (page - 1) * pageSize;
 
-  const total = db.prepare(
+  const total = prepare(
     `SELECT COUNT(*) as count FROM incomes i ${whereSql}`
-  ).get(...args).count;
+  ).get(args).count;
 
-  const items = db.prepare(
+  const items = prepare(
     `SELECT i.*, c.name as category_name, c.color as category_color
      FROM incomes i LEFT JOIN income_categories c ON i.category_id = c.id
      ${whereSql}
      ORDER BY i.date DESC, i.id DESC
      LIMIT ? OFFSET ?`
-  ).all(...args, pageSize, offset);
+  ).all([...args, pageSize, offset]);
 
   return { total, items, page, pageSize };
 }
@@ -275,13 +317,13 @@ function updateIncome(id, data) {
   }
   if (fields.length === 0) return getIncomeById(id);
   args.push(id);
-  db.prepare(`UPDATE incomes SET ${fields.join(', ')} WHERE id = ?`).run(...args);
+  prepare(`UPDATE incomes SET ${fields.join(', ')} WHERE id = ?`).run(args);
   saveDatabase();
   return getIncomeById(id);
 }
 
 function deleteIncome(id) {
-  const result = db.prepare('DELETE FROM incomes WHERE id = ?').run(id);
+  prepare('DELETE FROM incomes WHERE id = ?').run([id]);
   const changes = db.getRowsModified();
   saveDatabase();
   return changes > 0;
@@ -305,28 +347,28 @@ function getIncomeStats(params = {}) {
     dateEnd = `${now.getFullYear()}-12-31`;
   }
 
-  const totalIncome = db.prepare(
+  const totalIncome = prepare(
     'SELECT COALESCE(SUM(amount), 0) as total FROM incomes WHERE date BETWEEN ? AND ?'
-  ).get(dateStart, dateEnd).total;
+  ).get([dateStart, dateEnd]).total;
 
-  const byCategory = db.prepare(
+  const byCategory = prepare(
     `SELECT c.id, c.name, c.color, COALESCE(SUM(i.amount), 0) as total
      FROM income_categories c LEFT JOIN incomes i
      ON c.id = i.category_id AND i.date BETWEEN ? AND ?
      GROUP BY c.id, c.name, c.color
      ORDER BY total DESC`
-  ).all(dateStart, dateEnd);
+  ).all([dateStart, dateEnd]);
 
-  const byMonth = db.prepare(
+  const byMonth = prepare(
     `SELECT strftime('%Y-%m', date) as month, COALESCE(SUM(amount), 0) as total
      FROM incomes WHERE date BETWEEN ? AND ?
      GROUP BY strftime('%Y-%m', date)
      ORDER BY month ASC`
-  ).all(dateStart, dateEnd);
+  ).all([dateStart, dateEnd]);
 
-  const count = db.prepare(
+  const count = prepare(
     'SELECT COUNT(*) as count FROM incomes WHERE date BETWEEN ? AND ?'
-  ).get(dateStart, dateEnd).count;
+  ).get([dateStart, dateEnd]).count;
 
   return {
     totalIncome,
@@ -339,13 +381,13 @@ function getIncomeStats(params = {}) {
 }
 
 function listIncomeCategories() {
-  return db.prepare('SELECT * FROM income_categories ORDER BY id ASC').all();
+  return prepare('SELECT * FROM income_categories ORDER BY id ASC').all();
 }
 
 function getTaxRates(region = 'default') {
-  const rows = db.prepare(
+  const rows = prepare(
     'SELECT * FROM tax_rates WHERE region = ? ORDER BY level ASC'
-  ).all(region);
+  ).all([region]);
   return rows.map(r => ({
     id: r.id,
     region: r.region,
@@ -358,48 +400,48 @@ function getTaxRates(region = 'default') {
 }
 
 function saveTaxRates(region, rates) {
-  db.prepare('DELETE FROM tax_rates WHERE region = ?').run(region);
-  const insert = db.prepare(
+  prepare('DELETE FROM tax_rates WHERE region = ?').run([region]);
+  const insert = prepare(
     'INSERT INTO tax_rates (region, min_amount, max_amount, rate, quick_deduction, level) VALUES (?, ?, ?, ?, ?, ?)'
   );
   for (let i = 0; i < rates.length; i++) {
     const r = rates[i];
-    insert.run(
+    insert.run([
       region,
       r.min !== undefined ? r.min : r.min_amount,
       r.max !== undefined ? r.max : r.max_amount,
       r.rate,
       (r.deduction !== undefined ? r.deduction : r.quick_deduction) || 0,
       i + 1
-    );
+    ]);
   }
   saveDatabase();
   return getTaxRates(region);
 }
 
 function getDeductions() {
-  return db.prepare('SELECT * FROM deductions ORDER BY created_at DESC').all();
+  return prepare('SELECT * FROM deductions ORDER BY created_at DESC').all();
 }
 
 function saveDeduction(deduction) {
   if (deduction.id) {
-    db.prepare(
+    prepare(
       'UPDATE deductions SET name = ?, amount = ?, type = ? WHERE id = ?'
-    ).run(deduction.name, deduction.amount, deduction.type || 'special', deduction.id);
+    ).run([deduction.name, deduction.amount, deduction.type || 'special', deduction.id]);
     saveDatabase();
-    return db.prepare('SELECT * FROM deductions WHERE id = ?').get(deduction.id);
+    return prepare('SELECT * FROM deductions WHERE id = ?').get([deduction.id]);
   } else {
-    const result = db.prepare(
+    prepare(
       'INSERT INTO deductions (name, amount, type) VALUES (?, ?, ?)'
-    ).run(deduction.name, deduction.amount, deduction.type || 'special');
+    ).run([deduction.name, deduction.amount, deduction.type || 'special']);
     const lastId = db.exec('SELECT last_insert_rowid() as id')[0].values[0][0];
     saveDatabase();
-    return db.prepare('SELECT * FROM deductions WHERE id = ?').get(lastId);
+    return prepare('SELECT * FROM deductions WHERE id = ?').get([lastId]);
   }
 }
 
 function deleteDeduction(id) {
-  const result = db.prepare('DELETE FROM deductions WHERE id = ?').run(id);
+  prepare('DELETE FROM deductions WHERE id = ?').run([id]);
   const changes = db.getRowsModified();
   saveDatabase();
   return changes > 0;
@@ -414,11 +456,11 @@ function createInvoice(data) {
   ];
   const searchIndex = searchParts.join(' ');
 
-  const stmt = db.prepare(
+  const stmt = prepare(
     `INSERT INTO invoices (file_path, file_type, amount, invoice_date, invoice_number, category_id, ocr_text, search_index)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   );
-  stmt.run(
+  stmt.run([
     data.file_path,
     data.file_type,
     data.amount || null,
@@ -427,18 +469,18 @@ function createInvoice(data) {
     data.category_id || null,
     data.ocr_text || null,
     searchIndex
-  );
+  ]);
   const lastId = db.exec('SELECT last_insert_rowid() as id')[0].values[0][0];
   saveDatabase();
   return getInvoiceById(lastId);
 }
 
 function getInvoiceById(id) {
-  return db.prepare(
+  return prepare(
     `SELECT i.*, c.name as category_name
      FROM invoices i LEFT JOIN invoice_categories c ON i.category_id = c.id
      WHERE i.id = ?`
-  ).get(id);
+  ).get([id]);
 }
 
 function listInvoices(params = {}) {
@@ -457,12 +499,12 @@ function listInvoices(params = {}) {
 
   const whereSql = where.length > 0 ? 'WHERE ' + where.join(' AND ') : '';
 
-  return db.prepare(
+  return prepare(
     `SELECT i.*, c.name as category_name
      FROM invoices i LEFT JOIN invoice_categories c ON i.category_id = c.id
      ${whereSql}
      ORDER BY i.created_at DESC`
-  ).all(...args);
+  ).all(args);
 }
 
 function updateInvoice(id, data) {
@@ -489,14 +531,14 @@ function updateInvoice(id, data) {
   }
 
   args.push(id);
-  db.prepare(`UPDATE invoices SET ${fields.join(', ')} WHERE id = ?`).run(...args);
+  prepare(`UPDATE invoices SET ${fields.join(', ')} WHERE id = ?`).run(args);
   saveDatabase();
   return getInvoiceById(id);
 }
 
 function deleteInvoice(id) {
   const invoice = getInvoiceById(id);
-  const result = db.prepare('DELETE FROM invoices WHERE id = ?').run(id);
+  prepare('DELETE FROM invoices WHERE id = ?').run([id]);
   const changes = db.getRowsModified();
   saveDatabase();
   if (changes > 0 && invoice && invoice.file_path) {
@@ -512,11 +554,11 @@ function deleteInvoice(id) {
 }
 
 function listInvoiceCategories() {
-  return db.prepare('SELECT * FROM invoice_categories ORDER BY id ASC').all();
+  return prepare('SELECT * FROM invoice_categories ORDER BY id ASC').all();
 }
 
 function getSettings() {
-  const rows = db.prepare('SELECT key, value FROM settings').all();
+  const rows = prepare('SELECT key, value FROM settings').all();
   const result = {};
   for (const row of rows) {
     result[row.key] = row.value;
@@ -525,11 +567,11 @@ function getSettings() {
 }
 
 function saveSettings(settings) {
-  const stmt = db.prepare(
+  const stmt = prepare(
     'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
   );
   for (const [key, value] of Object.entries(settings)) {
-    stmt.run(key, String(value));
+    stmt.run([key, String(value)]);
   }
   saveDatabase();
   return getSettings();
@@ -542,6 +584,7 @@ function getDatabasePath() {
 module.exports = {
   initDatabase,
   getDb,
+  prepare,
   getDataDir,
   getInvoicesDir,
   getDatabasePath,
